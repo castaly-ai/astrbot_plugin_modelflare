@@ -1,0 +1,38 @@
+{
+  "api_key": {
+    "description": "Modelflare Smart API Key",
+    "type": "string",
+    "hint": "推荐使用 Smart API Key：一个 Key 调用你账号可用的全部模型。在 https://modelflare.dev/keys 创建；注册：https://modelflare.dev/sign-up?utm_source=astrbot&utm_medium=plugin&utm_campaign=integrations",
+    "default": ""
+  },
+  "base_url": {
+    "description": "Base URL",
+    "type": "string",
+    "hint": "china = https://origin.modelflare.dev/v1（国内，默认）；global = https://modelflare.dev/v1；也可以填自定义地址",
+    "options": ["china", "global"],
+    "default": "china"
+  },
+  "image_model": {
+    "description": "默认图像模型 / Default image model",
+    "type": "string",
+    "hint": "用 /mf_models image 查看可用的图像模型 ID",
+    "default": ""
+  },
+  "image_parameters": {
+    "description": "图像模型参数（JSON）/ Image parameters (JSON)",
+    "type": "text",
+    "hint": "按 docs.modelflare.dev 上该模型页面填写，例如 {\"size\": \"1024x1024\"}",
+    "default": "{}"
+  },
+  "video_model": {
+    "description": "默认视频模型 / Default video model",
+    "type": "string",
+    "hint": "用 /mf_models video 查看可用的视频模型 ID",
+    "default": ""
+  },
+  "video_wait_seconds": {
+    "description": "视频最长等待秒数 / Max video wait (seconds)",
+    "type": "int",
+    "default": 300
+  }
+}
