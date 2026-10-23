@@ -1,6 +1,6 @@
 name: astrbot_plugin_modelflare
 display_name: Modelflare
-desc: 用一个 Modelflare Smart API Key 调用你账号可用的全部图像、视频和文本模型。One Modelflare Smart API Key for every model available to your account.
-version: v0.1.0
+desc: 用一个 Modelflare Smart API Key 生成图像和视频，并支持恢复已有视频任务。Generate images and videos and resume existing video tasks with one Modelflare Smart API Key.
+version: v0.1.1
 author: modelflare
 repo: https://github.com/castaly-ai/astrbot_plugin_modelflare

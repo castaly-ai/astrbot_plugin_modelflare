@@ -30,6 +30,12 @@
     "hint": "用 /mf_models video 查看可用的视频模型 ID",
     "default": ""
   },
+  "video_parameters": {
+    "description": "视频模型参数（JSON）/ Video request parameters (JSON)",
+    "type": "text",
+    "hint": "按 docs.modelflare.dev 上该模型页面填写；命令里的提示词会在缺少 prompt 时自动加入",
+    "default": "{}"
+  },
   "video_wait_seconds": {
     "description": "视频最长等待秒数 / Max video wait (seconds)",
     "type": "int",

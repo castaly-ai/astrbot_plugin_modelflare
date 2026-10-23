@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -10,9 +11,9 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Video
 from astrbot.api.star import Context, Star
 
-from .modelflare_core import ModelflareClient, ModelflareError, classify_models, describe_error, model_docs_url
+from .modelflare_core import ModelflareClient, ModelflareError, classify_models, describe_error, model_docs_url, needs_catalog
 from .modelflare_core.client import fetch_catalog
-from .modelflare_core.media import create_video, download_video, generate_image, wait_for_video
+from .modelflare_core.media import create_video, download_video, generate_image, get_video, wait_for_video
 
 ATTRIBUTION_PLUGIN = "modelflare-astrbot"
 UTM_SOURCE = "astrbot"
@@ -31,7 +32,19 @@ class ModelflarePlugin(Star):
 
     def _classified(self, client: ModelflareClient):
         listed = client.list_models()
-        return classify_models(listed, fetch_catalog()), {entry.get("id") for entry in listed}
+        catalog = fetch_catalog() if needs_catalog(listed) else None
+        return classify_models(listed, catalog), {entry.get("id") for entry in listed}
+
+    def _video_path(self, task_id: str) -> Path:
+        safe_id = re.sub(r"[^a-zA-Z0-9._-]+", "-", task_id).strip("-") or "video"
+        return self.output_dir / f"{safe_id}.mp4"
+
+    async def _send_video(self, event: AstrMessageEvent, client: ModelflareClient, task_id: str):
+        data = await asyncio.to_thread(download_video, client, task_id)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        path = self._video_path(task_id)
+        path.write_bytes(data)
+        yield event.chain_result([Video.fromFileSystem(str(path))])
 
     def _explain(self, error: Exception, client: ModelflareClient | None, model_id: str | None) -> str:
         if not isinstance(error, ModelflareError):
@@ -55,7 +68,10 @@ class ModelflarePlugin(Star):
 
     @filter.command("mf_models")
     async def mf_models(self, event: AstrMessageEvent, kind: str = "image"):
-        """列出这把 Modelflare Key 可用的模型：/mf_models image|video|text"""
+        """列出这把 Modelflare Key 可用的媒体模型：/mf_models image|video"""
+        if kind not in ("image", "video"):
+            yield event.plain_result("用法：/mf_models image|video")
+            return
         client = None
         try:
             client = self._client()
@@ -105,7 +121,9 @@ class ModelflarePlugin(Star):
         try:
             client = self._client()
             model = await asyncio.to_thread(self._find, client, model_id, "video")
-            task = await asyncio.to_thread(create_video, client, model.id, {"prompt": prompt})
+            request = json.loads(self.config.get("video_parameters") or "{}")
+            request.setdefault("prompt", prompt)
+            task = await asyncio.to_thread(create_video, client, model.id, request)
             yield event.plain_result(f"视频任务已创建：{task['id']}，生成中……")
             wait = max(0, min(int(self.config.get("video_wait_seconds") or 300), 1800))
             status = await asyncio.to_thread(wait_for_video, client, task["id"], wait)
@@ -114,11 +132,40 @@ class ModelflarePlugin(Star):
                 yield event.plain_result(f"视频任务 {task['id']} 当前状态：{status.get('status')}" + (f"，原因：{reason}" if reason else ""))
                 return
             # Result URLs expire, so the file is downloaded as soon as it is ready.
-            data = await asyncio.to_thread(download_video, client, task["id"])
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            path = self.output_dir / f"{task['id']}.mp4"
-            path.write_bytes(data)
-            yield event.chain_result([Video.fromFileSystem(str(path))])
+            async for result in self._send_video(event, client, task["id"]):
+                yield result
         except Exception as ex:
             logger.warning(f"Modelflare video generation failed: {ex}")
             yield event.plain_result(self._explain(ex, client, model_id))
+
+    @filter.command("mf_video_status")
+    async def mf_video_status(self, event: AstrMessageEvent, task_id: str = ""):
+        """查询已有视频任务：/mf_video_status <task_id>"""
+        if not task_id:
+            yield event.plain_result("用法：/mf_video_status <task_id>")
+            return
+        client = None
+        try:
+            client = self._client()
+            status = await asyncio.to_thread(get_video, client, task_id)
+            yield event.plain_result(json.dumps(status, ensure_ascii=False))
+        except Exception as ex:
+            yield event.plain_result(self._explain(ex, client, None))
+
+    @filter.command("mf_video_download")
+    async def mf_video_download(self, event: AstrMessageEvent, task_id: str = ""):
+        """下载已完成视频：/mf_video_download <task_id>"""
+        if not task_id:
+            yield event.plain_result("用法：/mf_video_download <task_id>")
+            return
+        client = None
+        try:
+            client = self._client()
+            status = await asyncio.to_thread(get_video, client, task_id)
+            if status.get("status") != "completed":
+                yield event.plain_result(f"视频任务 {task_id} 当前状态：{status.get('status')}")
+                return
+            async for result in self._send_video(event, client, task_id):
+                yield result
+        except Exception as ex:
+            yield event.plain_result(self._explain(ex, client, None))

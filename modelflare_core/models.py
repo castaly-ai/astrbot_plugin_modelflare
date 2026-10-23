@@ -4,6 +4,7 @@ from typing import Any
 from .config import DOCS_URL
 
 _TEXT_ENDPOINTS = {"openai", "openai-response", "anthropic"}
+_MODEL_KINDS = {"text", "image", "video", "embedding", "rerank"}
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,15 @@ def classify_models(models: list[dict], catalog: list[dict] | None) -> list[Clas
         own = [e for e in model.get("supported_endpoint_types") or [] if isinstance(e, str)]
         merged = tuple(dict.fromkeys([*own, *[e for e in (entry or {}).get("supported_endpoint_types") or [] if isinstance(e, str)]]))
         endpoints = set(merged)
+        declared_kind = model.get("kind")
+        if declared_kind == "image":
+            route = model.get("image_route") or ("gemini-generate-content" if "gemini" in endpoints else "images" if "image-generation" in endpoints else None)
+            if route in ("gemini-generate-content", "images"):
+                result.append(ClassifiedModel(model_id, "image", merged, route))
+            continue
+        if declared_kind in _MODEL_KINDS:
+            result.append(ClassifiedModel(model_id, declared_kind, merged))
+            continue
         if _declares_image(entry, endpoints):
             route = "gemini-generate-content" if "gemini" in endpoints else "images" if "image-generation" in endpoints else None
             if route:
@@ -71,6 +81,19 @@ def classify_models(models: list[dict], catalog: list[dict] | None) -> list[Clas
         elif _TEXT_ENDPOINTS.intersection(own):
             result.append(ClassifiedModel(model_id, "text", merged))
     return result
+
+
+def needs_catalog(models: list[dict]) -> bool:
+    """Whether an older `/v1/models` response still needs `/api/pricing` to classify media."""
+    for model in models:
+        if not isinstance(model, dict) or model.get("kind") in _MODEL_KINDS:
+            continue
+        endpoints = {item for item in model.get("supported_endpoint_types") or [] if isinstance(item, str)}
+        if endpoints.intersection({"image-generation", "openai-video", "embeddings", "jina-rerank"}):
+            continue
+        if endpoints.intersection(_TEXT_ENDPOINTS | {"gemini"}):
+            return True
+    return False
 
 
 def model_docs_url(model: ClassifiedModel, locale: str = "en") -> str:

@@ -1,4 +1,6 @@
 import re
+import threading
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -19,6 +21,12 @@ _KIND_BY_CODE = {
     "unsupported_endpoint": "unsupported_endpoint",
     "rate_limit_exceeded": "rate_limited",
 }
+
+_CATALOG_TTL_SECONDS = 60 * 60
+_catalog_cache: list[dict[str, Any]] | None = None
+_catalog_loaded_at = 0.0
+_catalog_attempted = False
+_catalog_lock = threading.Lock()
 
 
 def attribution_value(plugin: str, version: str) -> str:
@@ -105,8 +113,12 @@ class ModelflareClient:
         return response
 
     def list_models(self) -> list[dict[str, Any]]:
-        data = self.request("GET", "models", timeout=30).json().get("data")
+        data = self.request("GET", "models?scope=authorized", timeout=30).json().get("data")
         return data if isinstance(data, list) else []
+
+    def model_profiles(self) -> dict[str, dict[str, Any]]:
+        data = self.request("GET", "model-profiles", timeout=30).json().get("data")
+        return data if isinstance(data, dict) else {}
 
     def iter_content(self, path: str, chunk_size: int = 1 << 20) -> Iterator[bytes]:
         response = self.request("GET", path, stream=True, timeout=600)
@@ -116,13 +128,28 @@ class ModelflareClient:
             response.close()
 
 
-def fetch_catalog(timeout: float = 30) -> list[dict[str, Any]] | None:
+def fetch_catalog(timeout: float = 8, force: bool = False) -> list[dict[str, Any]] | None:
     """Public catalog without a key; None when it cannot be read."""
-    try:
-        response = requests.get(CATALOG_URL, timeout=timeout)
-        body = response.json() if response.ok else None
-    except (requests.RequestException, ValueError):
-        return None
-    if not isinstance(body, dict) or body.get("success") is False or not isinstance(body.get("data"), list):
-        return None
-    return body["data"]
+    global _catalog_attempted, _catalog_cache, _catalog_loaded_at
+    now = time.monotonic()
+    if not force and _catalog_attempted and now - _catalog_loaded_at < _CATALOG_TTL_SECONDS:
+        return _catalog_cache
+    with _catalog_lock:
+        now = time.monotonic()
+        if not force and _catalog_attempted and now - _catalog_loaded_at < _CATALOG_TTL_SECONDS:
+            return _catalog_cache
+        try:
+            response = requests.get(CATALOG_URL, timeout=timeout)
+            body = response.json() if response.ok else None
+        except (requests.RequestException, ValueError):
+            _catalog_attempted = True
+            _catalog_loaded_at = now
+            return _catalog_cache
+        if not isinstance(body, dict) or body.get("success") is False or not isinstance(body.get("data"), list):
+            _catalog_attempted = True
+            _catalog_loaded_at = now
+            return _catalog_cache
+        _catalog_cache = body["data"]
+        _catalog_attempted = True
+        _catalog_loaded_at = now
+        return _catalog_cache

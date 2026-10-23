@@ -23,17 +23,20 @@ Generate images and videos from your AstrBot bot with one Modelflare **Smart API
 | Base URL | `china` → https://origin.modelflare.dev/v1（默认）· `global` → https://modelflare.dev/v1 · 或自定义地址 |
 | 默认图像模型 / 默认视频模型 | 用 `/mf_models image`、`/mf_models video` 查看可用的模型 ID |
 | 图像模型参数（JSON） | 按 https://docs.modelflare.dev/zh/models/image/ 上该模型页面填写 |
+| 视频模型参数（JSON） | 按对应视频模型页面填写；命令提示词会在参数中缺少 `prompt` 时自动加入 |
 | 视频最长等待秒数 | 默认 300 秒 |
 
 ## 命令
 
 | 命令 | 作用 |
 |---|---|
-| `/mf_models image\|video\|text` | 列出这把 Key 可用的模型，图像和视频模型附带文档链接 |
+| `/mf_models image\|video` | 列出这把 Key 可用的图像或视频模型，并附带文档链接 |
 | `/mf_image 提示词` | 用默认图像模型生成图片并发送 |
 | `/mf_video 提示词` | 用默认视频模型生成视频，完成后发送；超时则返回任务 ID |
+| `/mf_video_status <task_id>` | 查询已有视频任务，不会创建新任务 |
+| `/mf_video_download <task_id>` | 下载已完成的视频任务 |
 
-模型列表来自 Key 的 `GET /v1/models`，新模型上线无需改 Key。调用按实际用量从 Modelflare 余额扣费，可在 https://modelflare.dev/usage-logs 查看。
+模型列表来自 Key 的 `GET /v1/models?scope=authorized`，新模型上线无需改 Key。调用按实际用量从 Modelflare 余额扣费，可在 https://modelflare.dev/usage-logs 查看。
 
 ## 常见问题
 

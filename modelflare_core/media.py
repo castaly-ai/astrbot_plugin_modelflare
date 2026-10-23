@@ -24,6 +24,8 @@ def generate_image(
     """
     if model.kind != "image" or not model.image_route:
         raise ValueError(f"{model.id} is not an image model")
+    if edit and model.image_route != "images":
+        raise ValueError(f"{model.id} does not use the OpenAI-compatible image edits route")
     parameters = dict(parameters or {})
     images: list[tuple[bytes, str]] = []
     if model.image_route == "gemini-generate-content":
@@ -37,7 +39,7 @@ def generate_image(
                     images.append((base64.b64decode(inline["data"]), mime))
     else:
         path = "images/edits" if edit else "images/generations"
-        body = client.request("POST", path, json={"model": model.id, "prompt": prompt, **parameters}).json()
+        body = client.request("POST", path, json={**parameters, "model": model.id, "prompt": prompt}).json()
         for item in body.get("data") or []:
             if item.get("b64_json"):
                 images.append((base64.b64decode(item["b64_json"]), "image/png"))
